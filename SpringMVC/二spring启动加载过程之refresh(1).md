@@ -260,7 +260,7 @@ protected final void refreshBeanFactory() throws BeansException {
    }
 }
 
-	
+//创建beanFactory，使用的是DefaultListableBeanFactory
 protected DefaultListableBeanFactory createBeanFactory() {
         /**
          *getInternalParentBeanFactory（），parent对象是在创建ApplicationContext对象时，传入的
@@ -269,7 +269,19 @@ protected DefaultListableBeanFactory createBeanFactory() {
          */
 		return new DefaultListableBeanFactory(getInternalParentBeanFactory());
 	}
+
+//定制beanFactory
+protected void customizeBeanFactory(DefaultListableBeanFactory beanFactory) {
+		//是否允许使用相同名称重新注册不同的定义，默认为true
+		if (this.allowBeanDefinitionOverriding != null) {
+		beanFactory.setAllowBeanDefinitionOverriding(this.allowBeanDefinitionOverriding);
+		}
+		// 是否允许循环引用,默认为true
+		if (this.allowCircularReferences != null) {
+			beanFactory.setAllowCircularReferences(this.allowCircularReferences);
+		}
+	}
 ```
 
-
+关于循环引用，在单例中是默认是可以进行循环引用的，而在多例中，循环引用是会报错的。
 
