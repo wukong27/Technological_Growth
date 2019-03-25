@@ -25,7 +25,9 @@ public void refresh() throws BeansException, IllegalStateException {
          postProcessBeanFactory(beanFactory);
 
          // Invoke factory processors registered as beans in the context.
-         //调用beanFactory的后处理器，这些后处理器是在bean定义中向容器注册的
+         //调用beanFactory的后处理器，这些后处理器是在bean定义中向容器注册的,用户自定义的Spring的各种内置处理，都是在这个地方进行初始化的。比如：自定义ResourceEditorRegistrar；
+         //对priorityOrderedPostProcessors，orderedPostProcessors，BeanDefinitionRegistryPostProcessor进行注册，然后，在按顺序实例化，提前实例化这些接口下的bean。
+          
          invokeBeanFactoryPostProcessors(beanFactory);
 
          // Register bean processors that intercept bean creation.
@@ -94,10 +96,11 @@ protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
     //类加载器设置
    beanFactory.setBeanClassLoader(getClassLoader());
    beanFactory.setBeanExpressionResolver(new StandardBeanExpressionResolver(beanFactory.getBeanClassLoader()));
-    //org.springframework.beans.factory.xml.DefaultBeanDefinitionDocumentReader
+    //org.springframework.beans.factory.xml.DefaultBeanDefinitionDocumentReader资源编辑器
    beanFactory.addPropertyEditorRegistrar(new ResourceEditorRegistrar(this, getEnvironment()));
-
    // Configure the bean factory with context callbacks.
+   // 下面几行的意思就是，如果某个 bean 依赖于以下几个接口的实现类，在自动装配的时候忽略它们，
+   // Spring 会通过其他方式来处理这些依赖。
    beanFactory.addBeanPostProcessor(new ApplicationContextAwareProcessor(this));
    beanFactory.ignoreDependencyInterface(EnvironmentAware.class);
    beanFactory.ignoreDependencyInterface(EmbeddedValueResolverAware.class);
@@ -108,6 +111,13 @@ protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
 
    // BeanFactory interface not registered as resolvable type in a plain factory.
    // MessageSource registered (and found for autowiring) as a bean.
+    /**
+    * 下面几行就是为特殊的几个 bean 赋值，如果有 bean 依赖了以下几个，会注入这边相应的值，
+    * 之前我们说过，"当前 ApplicationContext 持有一个 BeanFactory"，这里解释了第一行
+    * ApplicationContext 还继承了 ResourceLoader、ApplicationEventPublisher、MessageSource
+    * 所以对于这几个依赖，可以赋值为 this，注意 this 是一个 ApplicationContext
+    * 那这里怎么没看到为 MessageSource 赋值呢？那是因为 MessageSource 被注册成为了一个普通的 bean
+    */
    beanFactory.registerResolvableDependency(BeanFactory.class, beanFactory);
    beanFactory.registerResolvableDependency(ResourceLoader.class, this);
    beanFactory.registerResolvableDependency(ApplicationEventPublisher.class, this);
@@ -174,7 +184,7 @@ public static ClassLoader getDefaultClassLoader() {
 
 - ##### **ResourceEditorRegistrar**
 
-  org.springframework.beans.factory.xml.DefaultBeanDefinitionDocumentReader#parseBeanDefinitions(Element , BeanDefinitionParserDelegate ) 方法中，判断是否为spring内部类，进而转化为对应的BeanDefinitions，spring内部的类，会用户的对象实例化之前就加载好。（如何判断是否为内部类的，在之后补充。）
+  属性编辑器，此时的EditorRegistrar对象是beanFactory默认的。
 
 
 
