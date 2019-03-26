@@ -249,7 +249,7 @@ protected final void refreshBeanFactory() throws BeansException {
       beanFactory.setSerializationId(getId());
       //定制bean factory，设置创建beanFactory的许可条件，准入门槛
       customizeBeanFactory(beanFactory);
-
+	  //org.springframework.context.support.AbstractXmlApplicationContext
       loadBeanDefinitions(beanFactory);
       synchronized (this.beanFactoryMonitor) {
          this.beanFactory = beanFactory;
@@ -285,3 +285,26 @@ protected void customizeBeanFactory(DefaultListableBeanFactory beanFactory) {
 
 关于循环引用，在单例中是默认是可以进行循环引用的，而在多例中，循环引用是会报错的。
 
+- loadBeanDefinitions(beanFactory):
+
+  解析xml文件，将解析出来的beanDefinition注册到 DefaultListableBeanFactory.beanDefinitionMap中。
+
+```java
+protected void loadBeanDefinitions(DefaultListableBeanFactory beanFactory) throws BeansException, IOException {
+   // Create a new XmlBeanDefinitionReader for the given BeanFactory.
+   // beanFactory的xml文件读取包装类
+   XmlBeanDefinitionReader beanDefinitionReader = new XmlBeanDefinitionReader(beanFactory);
+
+   // Configure the bean definition reader with this context's
+   // resource loading environment.
+   beanDefinitionReader.setEnvironment(this.getEnvironment());
+   beanDefinitionReader.setResourceLoader(this);
+   beanDefinitionReader.setEntityResolver(new ResourceEntityResolver(this));
+
+   // Allow a subclass to provide custom initialization of the reader,
+   // then proceed with actually loading the bean definitions.
+   initBeanDefinitionReader(beanDefinitionReader);
+   //调用此方法解析xml，获取beanDefinitionHolder
+   loadBeanDefinitions(beanDefinitionReader);
+}
+```
