@@ -1,3 +1,5 @@
+日期：2019-3-27
+
 ### 备注：refresh主流程
 
 ```java
@@ -124,9 +126,12 @@ protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
    beanFactory.registerResolvableDependency(ApplicationContext.class, this);
 
    // Register early post-processor for detecting inner beans as ApplicationListeners.
+    //添加beanFactory的后置处理器，用于后面的回调
    beanFactory.addBeanPostProcessor(new ApplicationListenerDetector(this));
 
+    
    // Detect a LoadTimeWeaver and prepare for weaving, if found.
+    //切面织入标识
    if (beanFactory.containsBean(LOAD_TIME_WEAVER_BEAN_NAME)) {
       beanFactory.addBeanPostProcessor(new LoadTimeWeaverAwareProcessor(beanFactory));
       // Set a temporary ClassLoader for type matching.
@@ -134,12 +139,15 @@ protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
    }
 
    // Register default environment beans.
+    //没有设置环境，设置环境变量
    if (!beanFactory.containsLocalBean(ENVIRONMENT_BEAN_NAME)) {
       beanFactory.registerSingleton(ENVIRONMENT_BEAN_NAME, getEnvironment());
    }
+    //检查设置jvm参数变量
    if (!beanFactory.containsLocalBean(SYSTEM_PROPERTIES_BEAN_NAME)) {
       beanFactory.registerSingleton(SYSTEM_PROPERTIES_BEAN_NAME, getEnvironment().getSystemProperties());
    }
+    //检查设置系统参数变量
    if (!beanFactory.containsLocalBean(SYSTEM_ENVIRONMENT_BEAN_NAME)) {
       beanFactory.registerSingleton(SYSTEM_ENVIRONMENT_BEAN_NAME, getEnvironment().getSystemEnvironment());
    }
@@ -184,7 +192,160 @@ public static ClassLoader getDefaultClassLoader() {
 
 - ##### **ResourceEditorRegistrar**
 
-  属性编辑器，此时的EditorRegistrar对象是beanFactory默认的。
+  属性编辑器，此时的EditorRegistrar对象是beanFactory默认的。如果需要自己定义一个PropertyEditorRegistrar 属性编辑器，可以自定义一个，实现PropertyEditorRegistrar 接口，重写registerCustomEditors（registy）方法，注入CustomEditorConfigurer，spring初始化的时候，会在invokeBeanFactoryPostProcessors调用后置处理器时候调用CustomEditorConfigurer（BeanFactoryPostProcessor接口的实现类）#postProcessBeanFactory方法，
+
+  为beanFactory注册ResourceEditorRegistrar。每个bean都会装载全套的属性编辑器，并在之后使用相应的属性编辑器来格式化属性值。
+
+  ```java
+  public class DatePropertyEditorRegistrar implements PropertyEditorRegistrar {
+      @Override
+      public void registerCustomEditors(PropertyEditorRegistry registry) {
+          registry.registerCustomEditor(Date.class, new CustomDateEditor(new SimpleDateFormat("yyyy-MM-dd"), true));
+      }
+  }
+  ```
+
+  ```xml
+  <bean class="org.springframework.beans.factory.config.CustomEditorConfigurer">
+      <property name="propertyEditorRegistrars">
+          <list>
+              <bean class="org.springframework.demo.DatePropertyEditorRegistrar"></bean>
+          </list>
+      </property>
+  </bean>
+  ```
+
+  ```java
+  protected BeanWrapper instantiateBean(final String beanName, final RootBeanDefinition mbd) {
+  		try {
+  			Object beanInstance;
+  			final BeanFactory parent = this;
+  			if (System.getSecurityManager() != null) {
+  				beanInstance = AccessController.doPrivileged(new PrivilegedAction<Object>() {
+  					@Override
+  					public Object run() {
+  						return getInstantiationStrategy().instantiate(mbd, beanName, parent);
+  					}
+  				}, getAccessControlContext());
+  			}
+  			else {
+  				beanInstance = getInstantiationStrategy().instantiate(mbd, beanName, parent);
+  			}
+  			BeanWrapper bw = new BeanWrapperImpl(beanInstance);
+              //初始化beanWrapper
+  			initBeanWrapper(bw);
+  			return bw;
+  		}
+  		catch (Throwable ex) {
+  			throw new BeanCreationException(
+  					mbd.getResourceDescription(), beanName, "Instantiation of bean failed", ex);
+  		}
+  	}
+  
+  protected void initBeanWrapper(BeanWrapper bw) {
+  		bw.setConversionService(getConversionService());
+      	//状态自定义的属性编辑器
+  		registerCustomEditors(bw);
+  	}
+  
+  protected void registerCustomEditors(PropertyEditorRegistry registry) {
+  		PropertyEditorRegistrySupport registrySupport =
+  				(registry instanceof PropertyEditorRegistrySupport ? (PropertyEditorRegistrySupport) registry : null);
+  		if (registrySupport != null) {
+  			registrySupport.useConfigValueEditors();
+  		}
+  		if (!this.propertyEditorRegistrars.isEmpty()) {
+              //遍历用户所有自定义的属性编辑器
+  			for (PropertyEditorRegistrar registrar : this.propertyEditorRegistrars) {
+  				try {
+                      //注册
+  					registrar.registerCustomEditors(registry);
+  				}
+  				catch (BeanCreationException ex) {
+  					Throwable rootCause = ex.getMostSpecificCause();
+  					if (rootCause instanceof BeanCurrentlyInCreationException) {
+  						BeanCreationException bce = (BeanCreationException) rootCause;
+  						if (isCurrentlyInCreation(bce.getBeanName())) {
+  							if (logger.isDebugEnabled()) {
+  								logger.debug("PropertyEditorRegistrar [" + registrar.getClass().getName() +
+  										"] failed because it tried to obtain currently created bean '" +
+  										ex.getBeanName() + "': " + ex.getMessage());
+  							}
+  							onSuppressedException(ex);
+  							continue;
+  						}
+  					}
+  					throw ex;
+  				}
+  			}
+  		}
+  		if (!this.customEditors.isEmpty()) {
+  			for (Map.Entry<Class<?>, Class<? extends PropertyEditor>> entry : this.customEditors.entrySet()) {
+  				Class<?> requiredType = entry.getKey();
+  				Class<? extends PropertyEditor> editorClass = entry.getValue();
+  				registry.registerCustomEditor(requiredType, BeanUtils.instantiateClass(editorClass));
+  			}
+  		}
+  	}
+  
+  // 在实例化lbean之后，属性填充时，找到匹配的类型转化，进行formateorg.springframework.beans.TypeConverterDelegate#doConvertValue(oldValue,newValue,requiredType,editor)
+  private Object doConvertValue(Object oldValue, Object newValue, Class<?> requiredType, PropertyEditor editor) {
+  		Object convertedValue = newValue;
+  
+  		if (editor != null && !(convertedValue instanceof String)) {
+  			// Not a String -> use PropertyEditor's setValue.
+  			// With standard PropertyEditors, this will return the very same object;
+  			// we just want to allow special PropertyEditors to override setValue
+  			// for type conversion from non-String values to the required type.
+  			try {
+                  //实际格式化的入口
+  				editor.setValue(convertedValue);
+                  //获取格式化之后的值
+  				Object newConvertedValue = editor.getValue();
+  				if (newConvertedValue != convertedValue) {
+  					convertedValue = newConvertedValue;
+  					// Reset PropertyEditor: It already did a proper conversion.
+  					// Don't use it again for a setAsText call.
+  					editor = null;
+  				}
+  			}
+  			catch (Exception ex) {
+  				if (logger.isDebugEnabled()) {
+  					logger.debug("PropertyEditor [" + editor.getClass().getName() + "] does not support setValue call", ex);
+  				}
+  				// Swallow and proceed.
+  			}
+  		}
+  
+  		Object returnValue = convertedValue;
+  
+  		if (requiredType != null && !requiredType.isArray() && convertedValue instanceof String[]) {
+  			// Convert String array to a comma-separated String.
+  			// Only applies if no PropertyEditor converted the String array before.
+  			// The CSV String will be passed into a PropertyEditor's setAsText method, if any.
+  			if (logger.isTraceEnabled()) {
+  				logger.trace("Converting String array to comma-delimited String [" + convertedValue + "]");
+  			}
+  			convertedValue = StringUtils.arrayToCommaDelimitedString((String[]) convertedValue);
+  		}
+  
+  		if (convertedValue instanceof String) {
+  			if (editor != null) {
+  				// Use PropertyEditor's setAsText in case of a String value.
+  				if (logger.isTraceEnabled()) {
+  					logger.trace("Converting String to [" + requiredType + "] using property editor [" + editor + "]");
+  				}
+  				String newTextValue = (String) convertedValue;
+  				return doConvertTextValue(oldValue, newTextValue, editor);
+  			}
+  			else if (String.class == requiredType) {
+  				returnValue = convertedValue;
+  			}
+  		}
+  
+  		return returnValue;
+  	}
+  ```
 
 
 

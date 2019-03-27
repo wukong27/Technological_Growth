@@ -304,7 +304,7 @@ protected void loadBeanDefinitions(DefaultListableBeanFactory beanFactory) throw
    // Allow a subclass to provide custom initialization of the reader,
    // then proceed with actually loading the bean definitions.
    initBeanDefinitionReader(beanDefinitionReader);
-   //调用此方法解析xml，获取beanDefinitionHolder
+   //重点方法：调用此方法解析xml，获取beanDefinitionHolder
    loadBeanDefinitions(beanDefinitionReader);
 }
 ```
